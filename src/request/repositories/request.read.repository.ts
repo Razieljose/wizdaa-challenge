@@ -73,4 +73,22 @@ export class RequestReadRepository extends BaseRepository<TimeOffRequestEntity> 
       .andWhere('r.createdAtTimestamp > :afterTimestamp', { afterTimestamp })
       .getMany();
   }
+
+  /**
+   * Returns the sum of daysRequested for all active (non-terminal) requests
+   * of a given employee at a given location.
+   * Active statuses: PENDING, APPROVED, IN_SYNC.
+   */
+  async sumPendingDeductions(employeeId: string, locationId: string): Promise<number> {
+    const result = await this.repository.createQueryBuilder('r')
+      .select('COALESCE(SUM(r.daysRequested), 0)', 'total')
+      .where('r.employeeId = :employeeId', { employeeId })
+      .andWhere('r.locationId = :locationId', { locationId })
+      .andWhere('r.status IN (:...statuses)', {
+        statuses: [RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.IN_SYNC],
+      })
+      .getRawOne();
+
+    return parseFloat(result?.total ?? '0');
+  }
 }

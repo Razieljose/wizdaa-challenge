@@ -18,4 +18,5 @@ export interface IRequestReadRepository extends IBaseRepository<TimeOffRequestEn
     locationId: string,
     afterTimestamp: number,
   ): Promise<TimeOffRequestEntity[]>;
+  sumPendingDeductions(employeeId: string, locationId: string): Promise<number>;
 }

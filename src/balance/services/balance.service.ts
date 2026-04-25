@@ -1,14 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { IBalanceService } from '../interfaces/balance.service.interface';
 import { BalanceReadRepository } from '../repositories/balance.read.repository';
 import { BalanceWriteRepository } from '../repositories/balance.write.repository';
+import { RequestReadRepository } from '../../request/repositories/request.read.repository';
 import { EffectiveBalanceOutput } from '../dto';
 import { NotFoundError, OptimisticLockError } from '../../shared/exceptions';
-import { TimeOffRequestEntity } from '../../request/entities/time-off-request.entity';
-import { RequestStatus } from '../../shared/types';
-import { DateUtil } from '../../shared/utils/date.util';
 
 @Injectable()
 export class BalanceService implements IBalanceService {
@@ -17,8 +13,8 @@ export class BalanceService implements IBalanceService {
   constructor(
     private readonly balanceReadRepo: BalanceReadRepository,
     private readonly balanceWriteRepo: BalanceWriteRepository,
-    @InjectRepository(TimeOffRequestEntity)
-    private readonly requestRepo: Repository<TimeOffRequestEntity>,
+    @Inject(forwardRef(() => RequestReadRepository))
+    private readonly requestReadRepo: RequestReadRepository,
   ) {}
 
   /**
@@ -31,7 +27,7 @@ export class BalanceService implements IBalanceService {
       throw new NotFoundError('Balance', `${employeeId}/${locationId}`);
     }
 
-    const pendingDeductions = await this.calculatePendingDeductions(employeeId, locationId);
+    const pendingDeductions = await this.requestReadRepo.sumPendingDeductions(employeeId, locationId);
 
     const effectiveBalance = Number(balance.hcmBalance) - pendingDeductions;
 
@@ -69,22 +65,5 @@ export class BalanceService implements IBalanceService {
         throw error;
       }
     }
-  }
-
-  /**
-   * Calculate the sum of daysRequested for active (non-terminal) requests.
-   */
-  private async calculatePendingDeductions(employeeId: string, locationId: string): Promise<number> {
-    const result = await this.requestRepo
-      .createQueryBuilder('r')
-      .select('COALESCE(SUM(r.daysRequested), 0)', 'total')
-      .where('r.employeeId = :employeeId', { employeeId })
-      .andWhere('r.locationId = :locationId', { locationId })
-      .andWhere('r.status IN (:...statuses)', {
-        statuses: [RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.IN_SYNC],
-      })
-      .getRawOne();
-
-    return parseFloat(result?.total || '0');
   }
 }

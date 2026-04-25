@@ -103,4 +103,58 @@ describe('RequestReadRepository', () => {
       expect(result).toHaveLength(1);
     });
   });
+
+  describe('sumPendingDeductions', () => {
+    it('returns the SUM of daysRequested for active statuses', async () => {
+      const mockQb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '7' }),
+      };
+      mockTypeOrmRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+      const result = await repo.sumPendingDeductions('emp-1', 'loc-1');
+
+      expect(result).toBe(7);
+      expect(mockQb.select).toHaveBeenCalledWith('COALESCE(SUM(r.daysRequested), 0)', 'total');
+      expect(mockQb.where).toHaveBeenCalledWith('r.employeeId = :employeeId', { employeeId: 'emp-1' });
+
+      const statusCall = mockQb.andWhere.mock.calls.find(
+        (call: any) => typeof call[0] === 'string' && call[0].includes('status IN'),
+      );
+      expect(statusCall).toBeDefined();
+      expect(statusCall[1].statuses).toEqual([
+        RequestStatus.PENDING,
+        RequestStatus.APPROVED,
+        RequestStatus.IN_SYNC,
+      ]);
+    });
+
+    it('returns 0 when no rows match', async () => {
+      const mockQb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '0' }),
+      };
+      mockTypeOrmRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+      const result = await repo.sumPendingDeductions('emp-1', 'loc-1');
+      expect(result).toBe(0);
+    });
+
+    it('returns 0 when getRawOne returns undefined', async () => {
+      const mockQb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(undefined),
+      };
+      mockTypeOrmRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+      const result = await repo.sumPendingDeductions('emp-1', 'loc-1');
+      expect(result).toBe(0);
+    });
+  });
 });
