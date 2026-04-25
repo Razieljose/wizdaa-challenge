@@ -1,0 +1,8 @@
+export enum RequestStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  IN_SYNC = 'IN_SYNC',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
