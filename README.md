@@ -1,17 +1,17 @@
 # Time-Off Microservice
 
-Microserviço de gerenciamento de folgas construído com **NestJS 11**, **SQLite** e **TypeORM 0.3**. Implementa o ciclo de vida completo de solicitações de time-off com state machine, RBAC por location, sincronização com HCM e reconciliação batch.
+Time-off management microservice built with **NestJS 11**, **SQLite**, and **TypeORM 0.3**. Implements the full lifecycle of time-off requests with a state machine, RBAC per location, HCM synchronization, and batch reconciliation.
 
 ---
 
-## Pré-requisitos
+## Prerequisites
 
-| Ferramenta | Versão mínima |
+| Tool | Minimum version |
 |---|---|
 | Node.js | 18.x |
 | npm | 9.x |
 
-Sem Docker, sem Redis, sem banco externo — apenas Node + SQLite em arquivo local.
+No Docker, no Redis, no external database — just Node + a local SQLite file.
 
 ---
 
@@ -22,120 +22,120 @@ cd time-off-microservice
 npm install
 ```
 
-O arquivo `.env` já existe com valores de desenvolvimento. Para customizar, edite-o diretamente.
+The `.env` file already ships with development values. Edit it directly to customize.
 
-**Variáveis de ambiente:**
+**Environment variables:**
 
-| Variável | Padrão | Descrição |
+| Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | Porta do servidor |
-| `NODE_ENV` | `development` | Ambiente (`development` / `production`) |
-| `JWT_SECRET` | `dev-secret-key-not-for-production` | Chave secreta JWT — troque em produção |
-| `JWT_EXPIRES_IN` | `8h` | Expiração do token |
-| `DB_PATH` | `./data/timeoff.db` | Caminho do banco SQLite |
-| `DB_LOGGING` | `false` | Log de queries SQL (`true` / `false`) |
-| `HCM_BASE_URL` | `http://localhost:3001` | URL base do sistema HCM |
-| `HCM_PATH_PREFIX` | `/mock-hcm` | Prefixo dos paths do HCM. Rotas internas (`/balances`, `/time-off`, `/time-off/:id/cancel`, `/batch`) são relativas. Trocar para o prefixo real ao apontar para um HCM de produção. |
-| `HCM_TIMEOUT_MS` | `10000` | Timeout de requisição HCM (ms) |
-| `HCM_MAX_RETRIES` | `3` | Tentativas com backoff exponencial (1s, 2s, 4s) |
-| `GRACE_PERIOD_HOURS` | `24` | Janela de grace period antes do startDate |
-| `WEBHOOK_SECRET` | `dev-webhook-secret-change-me` | Segredo para autenticar webhooks do HCM (vazio = desabilitado) |
+| `PORT` | `3000` | Server port |
+| `NODE_ENV` | `development` | Environment (`development` / `production`) |
+| `JWT_SECRET` | `dev-secret-key-not-for-production` | JWT secret — change in production |
+| `JWT_EXPIRES_IN` | `8h` | Token expiration |
+| `DB_PATH` | `./data/timeoff.db` | SQLite database path |
+| `DB_LOGGING` | `false` | SQL query logging (`true` / `false`) |
+| `HCM_BASE_URL` | `http://localhost:3001` | Base URL of the HCM system |
+| `HCM_PATH_PREFIX` | `/mock-hcm` | Prefix for HCM paths. Internal routes (`/balances`, `/time-off`, `/time-off/:id/cancel`, `/batch`) are relative to it. Override when pointing to a real production HCM. |
+| `HCM_TIMEOUT_MS` | `10000` | HCM request timeout (ms) |
+| `HCM_MAX_RETRIES` | `3` | Retries with exponential backoff (1s, 2s, 4s) |
+| `GRACE_PERIOD_HOURS` | `24` | Grace period window before `startDate` |
+| `WEBHOOK_SECRET` | `dev-webhook-secret-change-me` | Secret used to authenticate HCM webhooks (empty = disabled) |
 
 ---
 
-## Execução
+## Running
 
 ```bash
-# Desenvolvimento (hot-reload, schema auto-sync, seed automático)
+# Development (hot-reload, schema auto-sync, automatic seed)
 npm run start:dev
 
-# Produção (requer migration:run antes)
+# Production (run migration:run beforehand)
 npm run build
 npm run start:prod
 ```
 
-Na **primeira execução em desenvolvimento**, o banco é criado em `./data/timeoff.db` e populado automaticamente com:
+On the **first development run**, the database is created at `./data/timeoff.db` and automatically populated with:
 
-| Usuário | Role | Location | Senha |
+| User | Role | Location | Password |
 |---|---|---|---|
 | `manager@company.com` | MANAGER | loc-001, loc-002 | `Password123` |
 | `alice@company.com` | EMPLOYEE | loc-001 | `Password123` |
 | `bob@company.com` | EMPLOYEE | loc-001 | `Password123` |
 
-O seed é idempotente: se o banco já tiver usuários, o seed é ignorado.
+The seed is idempotent: if the database already contains users, it is skipped.
 
 ---
 
-## Migrations (produção)
+## Migrations (production)
 
-Em produção (`NODE_ENV=production`) o schema **não é sincronizado automaticamente**. Use os scripts de migration:
+In production (`NODE_ENV=production`) the schema is **not auto-synchronized**. Use the migration scripts:
 
 ```bash
-# Aplicar todas as migrations pendentes
+# Apply all pending migrations
 npm run migration:run
 
-# Reverter a última migration
+# Revert the last migration
 npm run migration:revert
 
-# Listar status das migrations
+# Show migration status
 npm run migration:show
 
-# Gerar nova migration a partir de mudanças nas entities
-npm run migration:generate -- src/database/migrations/006-nome-da-migration
+# Generate a new migration from entity changes
+npm run migration:generate -- src/database/migrations/006-your-migration-name
 ```
 
-As migrations ficam em `src/database/migrations/` e a configuração do CLI em `src/database/data-source.ts`.
+Migrations live in `src/database/migrations/` and the CLI configuration lives in `src/database/data-source.ts`.
 
 ---
 
 ## API
 
-Todos os endpoints são prefixados com `/api`. O servidor responde na porta `3000` por padrão.
+All endpoints are prefixed with `/api`. The server listens on port `3000` by default.
 
-### Usuários e Autenticação
+### Users and Authentication
 
-| Método | Rota | Auth | Descrição |
+| Method | Route | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/users` | — | Criar usuário |
-| `POST` | `/api/users/login` | — | Login — retorna `accessToken` JWT |
-| `POST` | `/api/users/roles` | JWT + MANAGER | Atribuir role a usuário por location |
-| `GET` | `/api/users/:id` | JWT | Buscar usuário por ID |
+| `POST` | `/api/users` | — | Create user |
+| `POST` | `/api/users/login` | — | Login — returns JWT `accessToken` |
+| `POST` | `/api/users/roles` | JWT + MANAGER | Assign role to user per location |
+| `GET` | `/api/users/:id` | JWT | Fetch user by ID |
 
-### Saldos
+### Balances
 
-| Método | Rota | Auth | Descrição |
+| Method | Route | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/balances?employeeId=X&locationId=Y` | JWT + location | Consultar saldo efetivo |
+| `GET` | `/api/balances?employeeId=X&locationId=Y` | JWT + location | Get effective balance |
 
-O saldo efetivo é calculado em tempo real:
+Effective balance is calculated in real time:
 ```
 effectiveBalance = hcmBalance − SUM(daysRequested WHERE status IN PENDING, APPROVED, IN_SYNC)
 ```
 
-### Campo `manualReviewReason`
+### `manualReviewReason` field
 
-Todo `RequestOutput` retornado pela API inclui o campo `manualReviewReason: string | null`. Valores possíveis:
-- `null` — sem revisão pendente (caso normal)
-- `"HCM_REVERSAL_REJECTED:<mensagem>"` — tentativa de cancelamento de request COMPLETED foi rejeitada pelo HCM. Request permanece COMPLETED até resolução manual.
+Every `RequestOutput` returned by the API includes a `manualReviewReason: string | null` field. Possible values:
+- `null` — no pending review (normal case)
+- `"HCM_REVERSAL_REJECTED:<message>"` — a cancellation attempt for a COMPLETED request was rejected by HCM. The request stays COMPLETED until manual resolution.
 
-### Solicitações de Folga
+### Time-Off Requests
 
-| Método | Rota | Auth | Descrição |
+| Method | Route | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/requests` | JWT + EMPLOYEE/MANAGER + location | Submeter solicitação |
-| `PATCH` | `/api/requests/:id/approve` | JWT + MANAGER | Aprovar |
-| `PATCH` | `/api/requests/:id/reject` | JWT + MANAGER | Rejeitar |
-| `PATCH` | `/api/requests/:id/cancel` | JWT | Cancelar (owner ou MANAGER) |
-| `GET` | `/api/requests/:id` | JWT | Buscar solicitação por ID |
-| `GET` | `/api/requests?employeeId=X` | JWT | Listar solicitações do empregado |
+| `POST` | `/api/requests` | JWT + EMPLOYEE/MANAGER + location | Submit a request |
+| `PATCH` | `/api/requests/:id/approve` | JWT + MANAGER | Approve |
+| `PATCH` | `/api/requests/:id/reject` | JWT + MANAGER | Reject |
+| `PATCH` | `/api/requests/:id/cancel` | JWT | Cancel (owner or MANAGER) |
+| `GET` | `/api/requests/:id` | JWT | Fetch a request by ID |
+| `GET` | `/api/requests?employeeId=X` | JWT | List an employee's requests |
 
-### Webhook HCM
+### HCM Webhook
 
-| Método | Rota | Auth | Descrição |
+| Method | Route | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/webhooks/hcm/balance` | `X-Webhook-Secret` | Receber atualização de saldo do HCM |
+| `POST` | `/api/webhooks/hcm/balance` | `X-Webhook-Secret` | Receive a balance update from HCM |
 
-Payload esperado:
+Expected payload:
 ```json
 {
   "employeeId": "uuid",
@@ -148,18 +148,18 @@ Payload esperado:
 
 ---
 
-## Fluxo Rápido (Thunder Client / Postman)
+## Quick Walkthrough (Thunder Client / Postman)
 
 ```
 1. POST /api/users/login          → { accessToken }
-2. POST /api/requests             → { id } (header: Authorization: Bearer <token>)
+2. POST /api/requests             → { id }   (header: Authorization: Bearer <token>)
 3. PATCH /api/requests/:id/approve
 4. GET  /api/balances?employeeId=...&locationId=...
 ```
 
 ---
 
-## State Machine de Requests
+## Request State Machine
 
 ```
                     submit
@@ -177,17 +177,17 @@ Payload esperado:
                               │       │
                           COMPLETED  FAILED
                               │
-                        cancel (c/ HCM reversal)
+                        cancel (with HCM reversal)
                               │
                            CANCELLED
 ```
 
-**Grace period** (padrão: 24h antes do `startDate`):
-- `approve`: permitido apenas dentro do grace period
-- `cancel` de APPROVED por employee: permitido apenas dentro do grace period
-- `cancel` de APPROVED por MANAGER: sempre permitido
+**Grace period** (default: 24h before `startDate`):
+- `approve`: allowed only within the grace period
+- `cancel` of APPROVED by an employee: allowed only within the grace period
+- `cancel` of APPROVED by a MANAGER: always allowed
 
-**Cancel de COMPLETED**: envia reversal ao HCM. Se HCM confirmar, status vira CANCELLED. Se HCM rejeitar, o request permanece COMPLETED, o campo `manualReviewReason` é preenchido com `HCM_REVERSAL_REJECTED:<motivo>` e um audit `cancel_attempt_failed` é registrado. API retorna `403 ForbiddenError`. Operadores listam casos pendentes com:
+**Cancel of COMPLETED**: sends a reversal to HCM. If HCM confirms, the status moves to CANCELLED. If HCM rejects, the request stays COMPLETED, the `manualReviewReason` field is filled with `HCM_REVERSAL_REJECTED:<message>`, and a `cancel_attempt_failed` audit entry is recorded. The API returns `403 ForbiddenError`. Operators list pending cases with:
 
 ```sql
 SELECT * FROM time_off_requests WHERE manualReviewReason IS NOT NULL;
@@ -197,12 +197,12 @@ SELECT * FROM time_off_requests WHERE manualReviewReason IS NOT NULL;
 
 ## RBAC
 
-Cada usuário tem roles por location (`user_location_roles`). Ao autenticar, o JWT strategy carrega todas as roles e constrói o `IActor` com:
-- `roles[]` — lista de `{ locationId, role }`
-- `employeeLocationIds[]` — locations onde é EMPLOYEE
-- `managedLocationIds[]` — locations onde é MANAGER
+Each user has roles per location (`user_location_roles`). At authentication time, the JWT strategy loads all roles and builds the `IActor` with:
+- `roles[]` — list of `{ locationId, role }`
+- `employeeLocationIds[]` — locations where the actor holds the EMPLOYEE role
+- `managedLocationIds[]` — locations where the actor holds the MANAGER role
 
-Guards aplicados por endpoint:
+Guards applied per endpoint:
 
 | Endpoint | Guards |
 |---|---|
@@ -213,53 +213,53 @@ Guards aplicados por endpoint:
 | `GET /requests/:id` | `JwtGuard` → `RequestLocationGuard` |
 | `GET /balances` | `JwtGuard` → `LocationAccessGuard` |
 
-- `RolesGuard` checa `@Roles(...)` contra `actor.roles.map(r => r.role)`
-- `LocationAccessGuard` extrai `locationId` do body/params/query e valida presença em `actor.roles`
-- `RequestLocationGuard` (defesa em camadas) carrega o request pelo `:id`, lê seu `locationId` e valida
+- `RolesGuard` checks `@Roles(...)` against `actor.roles.map(r => r.role)`
+- `LocationAccessGuard` extracts `locationId` from body/params/query and validates its presence in `actor.roles`
+- `RequestLocationGuard` (defense in depth) loads the request by `:id`, reads its `locationId`, and validates
 
-Em cima dos guards, o service ainda faz `validateManagerAccess` (aprovar/rejeitar) e checagem owner-ou-manager (cancelar) como segunda linha.
+On top of the guards, the service still runs `validateManagerAccess` (approve/reject) and an owner-or-manager check (cancel) as a second line of defense.
 
 ---
 
-## Arquitetura de Módulos
+## Module Architecture
 
 ```
 src/
 ├── shared/          # BaseRepository<T>, BaseError, 11 exceptions, DateUtil, UuidUtil, GlobalExceptionFilter
 ├── auth/            # JwtStrategy, JwtGuard, RolesGuard, LocationAccessGuard, @CurrentActor, @Roles
 ├── database/
-│   ├── migrations/  # 001–006: 5 tabelas + manualReviewReason
-│   ├── seed/        # SeedService — popula banco na primeira execução (dev only)
-│   └── data-source.ts  # DataSource para CLI de migrations
+│   ├── migrations/  # 001–006: 5 tables + manualReviewReason
+│   ├── seed/        # SeedService — populates the database on first run (dev only)
+│   └── data-source.ts  # DataSource for the migration CLI
 ├── user/            # UserEntity, UserLocationRoleEntity, UserRepository (read), UserWriteRepository, UserRoleRepository, UserService
 ├── balance/         # BalanceEntity, BalanceReadRepository, BalanceWriteRepository, BalanceService (optimistic locking)
-├── request/         # TimeOffRequestEntity, RequestStateMachine, RequestService (transactions atômicas), RequestAuditRepository, RequestLocationGuard
-├── hcm/             # HcmClient — ACL com retry exponencial (1s/2s/4s), timeout 10s, paths por HCM_PATH_PREFIX
+├── request/         # TimeOffRequestEntity, RequestStateMachine, RequestService (atomic transactions), RequestAuditRepository, RequestLocationGuard
+├── hcm/             # HcmClient — ACL with exponential retry (1s/2s/4s), 10s timeout, paths via HCM_PATH_PREFIX
 ├── sync/            # SyncService (real-time + batch), SyncCron (every_5min + 2AM)
 └── webhook/         # WebhookController — POST /webhooks/hcm/balance
 
 test/
-├── mock-hcm/        # Mock HCM server para testes E2E (suporta X-Simulate-Timeout e X-Simulate-Error)
-└── app.e2e-spec.ts  # Testes E2E com SQLite :memory:
+├── mock-hcm/        # Mock HCM server for E2E tests (supports X-Simulate-Timeout and X-Simulate-Error)
+└── app.e2e-spec.ts  # E2E tests with SQLite :memory:
 ```
 
-### Padrões arquiteturais
+### Architectural patterns
 
-- **CQRS pragmático**: módulos `request`, `balance` e `user` separam repositórios de leitura e escrita
-- **Transactions atômicas**: toda mudança de status + audit log em `RequestService` ocorre em `DataSource.transaction()`
-- **Interface-first**: cada service e repositório implementa uma interface TypeScript dedicada
-- **BaseError hierarchy**: 11 exceptions específicas com `code`, `httpStatus`, `details` → mapeadas pelo `GlobalExceptionFilter`
-- **Dual date columns**: ISO string (display) + UNIX timestamp (queries) em todas as entidades com datas
-- **Optimistic locking**: `@VersionColumn` em `BalanceEntity` com retry loop (até 3x)
-- **WAL mode**: `PRAGMA journal_mode=WAL` + `busy_timeout=5000` para leituras concorrentes no SQLite
+- **Pragmatic CQRS**: the `request`, `balance`, and `user` modules split read and write repositories
+- **Atomic transactions**: every status change + audit log entry in `RequestService` runs inside `DataSource.transaction()`
+- **Interface-first**: every service and repository implements a dedicated TypeScript interface
+- **BaseError hierarchy**: 11 specific exceptions with `code`, `httpStatus`, `details` → mapped by `GlobalExceptionFilter`
+- **Dual date columns**: ISO string (display) + UNIX timestamp (queries) on every entity that has dates
+- **Optimistic locking**: `@VersionColumn` on `BalanceEntity` with a retry loop (up to 3x)
+- **WAL mode**: `PRAGMA journal_mode=WAL` + `busy_timeout=5000` for concurrent reads on SQLite
 
 ---
 
-## Banco de Dados
+## Database
 
-### Tabelas e Índices
+### Tables and Indices
 
-| Tabela | Índices relevantes |
+| Table | Relevant indices |
 |---|---|
 | `users` | `UNIQUE(email)` |
 | `user_location_roles` | `UNIQUE(userId, locationId, role)`, `INDEX(userId)`, `INDEX(locationId, role)` |
@@ -269,50 +269,50 @@ test/
 
 ---
 
-## Testes
+## Tests
 
 ```bash
-# Testes unitários (todos os módulos)
+# Unit tests (all modules)
 npm run test
 
-# Testes unitários com watch
+# Unit tests in watch mode
 npm run test:watch
 
-# Testes E2E (SQLite in-memory + mock HCM)
+# E2E tests (in-memory SQLite + mock HCM)
 npm run test:e2e
 
-# Cobertura de código
+# Code coverage
 npm run test:cov
 
-# Verificar formatação (sem alterar arquivos)
+# Check formatting (read-only)
 npm run format:check
 
 # Lint
 npm run lint
 ```
 
-### Cobertura atual
+### Current coverage
 
-Última execução: **97.96% statements**, **98.04% lines**, **95.3% methods**, **79.32% branches** — 221 testes passando em 32 suites.
+Latest run: **97.96% statements**, **98.04% lines**, **95.3% methods**, **79.32% branches** — 221 tests passing across 32 suites.
 
-Arquivos excluídos da cobertura (via `jest.config.json`): `*.module.ts`, `main.ts`, `*.interface.ts`, `index.ts`, `database/migrations/**`, `database/data-source.ts`, `**/dto/**`, `**/entities/**`. Esses arquivos são pura configuração ou contêm apenas decorators TypeORM / class-validator, sem lógica runtime para testar.
+Files excluded from coverage (via `jest.config.json`): `*.module.ts`, `main.ts`, `*.interface.ts`, `index.ts`, `database/migrations/**`, `database/data-source.ts`, `**/dto/**`, `**/entities/**`. These files are pure configuration or contain only TypeORM / class-validator decorators, with no runtime logic to test.
 
-### Estrutura de testes
+### Test structure
 
-Cada arquivo de implementação tem um `.spec.ts` correspondente na pasta `__tests__/` do seu módulo. Testes E2E usam o mock HCM server embutido (sem servidor externo necessário).
+Every implementation file has a matching `.spec.ts` inside the `__tests__/` folder of its module. E2E tests use the embedded mock HCM server (no external server required).
 
 ---
 
-## Decisões Técnicas
+## Technical Decisions
 
-Consulte [docs/decisions.md](./docs/decisions.md) para o log completo de decisões e resolução de ambiguidades do TRD.
+See [docs/decisions.md](./docs/decisions.md) for the full log of decisions and TRD ambiguity resolutions.
 
-Principais decisões:
-- **WAL mode configurado em dois lugares** (TypeORM `extra.pragma` + `main.ts` PRAGMA direto) — redundância intencional para garantia de ativação
-- **Sync não é imediato no approve** — cron de 5min como fallback; evita bloquear a resposta HTTP
-- **HCM paths configuráveis via `HCM_PATH_PREFIX`** — default `/mock-hcm` para desenvolvimento; sobrescrever em produção
-- **Cancel de COMPLETED com falha no HCM** — request permanece COMPLETED, `manualReviewReason` persistido + audit `cancel_attempt_failed`, erro 403 para o cliente, query SQL para operadores listar pendências
-- **Transactions atômicas em todas as mutações de request** — status + audit log sempre em `DataSource.transaction()`
-- **Defesa em camadas nos endpoints de request** — `RequestLocationGuard` no controller + `validateManagerAccess` no service
-- **UserRoleRepository unificado** — tabela join simples, separação read/write seria burocracia sem benefício real
-- **Entities e DTOs excluídos da cobertura** — são decorators TypeORM / class-validator sem lógica runtime
+Key decisions:
+- **WAL mode configured in two places** (TypeORM `extra.pragma` + a direct `PRAGMA` in `main.ts`) — intentional redundancy to guarantee activation
+- **Sync is not immediate on approve** — a 5-minute cron acts as a fallback; avoids blocking the HTTP response
+- **HCM paths configurable via `HCM_PATH_PREFIX`** — defaults to `/mock-hcm` for development; override in production
+- **Cancel of COMPLETED with HCM failure** — the request stays COMPLETED, `manualReviewReason` is persisted along with a `cancel_attempt_failed` audit entry, the client receives 403, and operators list pending cases via SQL
+- **Atomic transactions on every request mutation** — status + audit log always run inside `DataSource.transaction()`
+- **Defense in depth on request endpoints** — `RequestLocationGuard` at the controller + `validateManagerAccess` at the service
+- **Unified `UserRoleRepository`** — simple join table; splitting read/write would be boilerplate with no real benefit
+- **Entities and DTOs excluded from coverage** — they only carry TypeORM / class-validator decorators with no runtime logic
